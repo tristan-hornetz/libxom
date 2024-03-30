@@ -11,7 +11,13 @@ find_package(Threads REQUIRED)
 add_link_options("-znoexecstack")
 
 add_subdirectory("libxom")
+
+if(EPT)
 add_subdirectory("modxom")
+endif()
+
+add_executable(demo demo.c)
+target_link_libraries(demo PUBLIC xom)
 
 install(TARGETS xom DESTINATION /usr/lib)
 install(FILES xom.h DESTINATION include)
