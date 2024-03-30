@@ -9,3 +9,13 @@ install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
 _deps
+libxom/html
+libxom/latex
+build
+cmake-build-debug
+html
+latex
+docs
+
+.idea
+.vscode
