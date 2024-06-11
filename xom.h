@@ -191,7 +191,7 @@ void xom_free_all_subpages(struct xom_subpages* subpages);
  * @param page_number The page's index within the buffer. Can be computed as (byte_offset / PAGE_SIZE).
  * @return 0 upon success, a negative error code upon error.
  */
-int xom_mark_register_clear(const struct xombuf *buf, unsigned char full_clear, unsigned long page_number);
+int xom_mark_register_clear(struct xombuf *buf, unsigned char full_clear, unsigned long page_number);
 
 /**
  * Mark a XOM page reserved for subpage-XOM for register clearing. Only supported for SLAT-based XOM

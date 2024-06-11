@@ -48,6 +48,7 @@ struct xombuf {
     void *address;
     size_t allocated_size;
     uint8_t locked;
+    uint8_t marked;
     uint8_t xom_mode;
 } typedef _xombuf, *p_xombuf;
 
@@ -79,6 +80,7 @@ static volatile uint8_t initialized = 0;
 static pthread_mutex_t lib_lock;
 static unsigned int xom_mode = XOM_MODE_UNSUPPORTED;
 static void *xom_base_addr = NULL;
+static unsigned char migrate_dlopen = 0;
 
 static void *(*dlopen_original)(const char *, int) = NULL;
 static void *(*dlmopen_original)(Lmid_t, const char *, int) = NULL;
@@ -158,9 +160,14 @@ static int migrate_skip_type(unsigned int);
 
 void *dlopen(const char *filename, int flags) {
     void *ret;
+
+    printf("DLOPEN %s\nRedirecting to %p\n", filename, dlopen_original);
+
     if (!dlopen_original)
         return NULL;
     ret = dlopen_original(filename, flags);
+    if(!migrate_dlopen)
+        return ret;
     if (ret)
         migrate_skip_type(TEXT_TYPE_VDSO);
     return ret;
@@ -172,6 +179,8 @@ void *dlmopen(Lmid_t lmid, const char *filename, int flags) {
     if (!dlmopen_original)
         return NULL;
     ret = dlmopen_original(lmid, filename, flags);
+    if(!migrate_dlopen)
+        return ret;
     if (ret)
         migrate_skip_type(TEXT_TYPE_VDSO);
     return ret;
@@ -181,7 +190,7 @@ void *dlmopen(Lmid_t lmid, const char *filename, int flags) {
 
 /**
  * Parse the /proc/<pid>/maps file to find all executable memory segments
- * 
+ *
  * @returns An array of text_region structs, which is terminated by an
  *  entry with .type = 0. The caller must free this array
 */
@@ -255,11 +264,11 @@ static text_region *explore_text_regions() {
 
 /**
  * Unmap the code specified by space, remap it as xom, and fill it with the data in dest
- * 
+ *
  * @param space A text_region describing the code section that should be remapped
  * @param dest A backup buffer containing the code in space. It must have the same size
  * @param fd The /proc/xom file descriptor
- * 
+ *
  * @returns 0 upon success, a negative value otherwise
 */
 static __attribute__((optimize("O0"))) int remap_no_libc(text_region *space, char *dest, int32_t fd) {
@@ -318,7 +327,7 @@ static __attribute__((optimize("O0"))) int remap_no_libc(text_region *space, cha
 
 /**
  * Migrate the code in space to XOM
- * 
+ *
  * @param space A text_region describing the code that should be migrated
  * @returns 0 upon success, a negative value otherwise
 */
@@ -446,6 +455,7 @@ static p_xombuf xomalloc_page_internal(size_t size) {
 
     ret->allocated_size = size;
     ret->locked = 0;
+    ret->marked = 0;
     ret->xom_mode = (uint8_t) xom_mode;
     return ret;
 
@@ -482,6 +492,7 @@ static void *xom_lock_internal(struct xombuf *buf) {
         errno = EINVAL;
         return NULL;
     }
+
     if (buf->locked)
         return buf->address;
 
@@ -699,18 +710,20 @@ static int set_xom_mode_internal(const int new_xom_mode) {
     return -1;
 }
 
-static int mark_register_clear_internal(const struct xombuf* buf, uint8_t full_clear, size_t page_number) {
+static int mark_register_clear_internal(struct xombuf* buf, uint8_t full_clear, size_t page_number) {
     modxom_cmd cmd = {
             .cmd = MODXOM_CMD_MARK_REG_CLEAR,
             .base_addr = (uintptr_t) buf->address + (page_number * PAGE_SIZE),
             .num_pages = full_clear ? REG_CLEAR_TYPE_FULL : REG_CLEAR_TYPE_VECTOR
     };
 
-    if(xom_mode != XOM_MODE_SLAT)
+    if(xom_mode != XOM_MODE_SLAT || !buf->locked || buf->marked)
         return -EINVAL;
 
     if(write(xomfd, &cmd, sizeof(cmd)) < 0)
         return -errno;
+
+    buf->marked = 1;
 
     return 0;
 }
@@ -740,7 +753,7 @@ void xom_free(struct xombuf *buf) {
     __libxom_epilogue();
 }
 
-int xom_mark_register_clear(const struct xombuf *buf, uint8_t full_clear, size_t page_number) {
+int xom_mark_register_clear(struct xombuf *buf, uint8_t full_clear, size_t page_number) {
     if(page_number * PAGE_SIZE > buf->allocated_size)
         return -EINVAL;
 
@@ -847,17 +860,19 @@ void initialize_libxom(void) {
     while (*envp) {
         if (strstr(*envp, LIBXOM_ENVVAR "=" LIBXOM_ENVVAR_LOCK_ALL)) {
             migrate_all_code_internal();
-            install_dlopen_hook();
+            migrate_dlopen = 1;
             break;
         }
         if (strstr(*envp, LIBXOM_ENVVAR "=" LIBXOM_ENVVAR_LOCK_LIBS)) {
             migrate_shared_libraries_internal();
-            install_dlopen_hook();
+            migrate_dlopen = 1;
             break;
         }
         envp++;
     }
 #endif
+
+    install_dlopen_hook();
 
     while (!rval)
         _rdrand32_step((uint32_t *) &rval);
@@ -870,4 +885,3 @@ void initialize_libxom(void) {
 
     pthread_mutex_unlock(&lib_lock);
 }
-
