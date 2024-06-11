@@ -161,8 +161,6 @@ static int migrate_skip_type(unsigned int);
 void *dlopen(const char *filename, int flags) {
     void *ret;
 
-    printf("DLOPEN %s\nRedirecting to %p\n", filename, dlopen_original);
-
     if (!dlopen_original)
         return NULL;
     ret = dlopen_original(filename, flags);
