@@ -562,7 +562,7 @@ static int xom_release(struct inode *, struct file *) {
 }
 
 static int xom_mmap(struct file *f, struct vm_area_struct *vma) {
-    int status;
+    int status = -EINVAL;
     pxom_process_entry curr_entry;
     pxom_mapping new_mapping;
 
@@ -579,11 +579,11 @@ static int xom_mmap(struct file *f, struct vm_area_struct *vma) {
     curr_entry = get_process_entry();
 
     if (!curr_entry)
-        return -EINVAL;
+        goto exit;
 
     status = manage_mapping_intersection(vma, curr_entry);
     if (status < 0)
-        return status;
+        goto exit;
 
     new_mapping = get_new_mapping(vma, curr_entry);
 
@@ -592,6 +592,7 @@ static int xom_mmap(struct file *f, struct vm_area_struct *vma) {
     else
         list_add(&(new_mapping->lhead), &(curr_entry->mappings));
 
+exit:
     mutex_unlock(&file_lock);
 
 #ifdef MODXOM_DEBUG
@@ -701,7 +702,7 @@ static ssize_t xom_write(struct file *f, const char __user *user_mem, size_t len
             ret = xom_forward_to_hypervisor(cmd.base_addr, MMUEXT_MARK_REG_CLEAR, cmd.num_pages);
             break;
         default:;
-}
+    }
 
     mutex_unlock(&file_lock);
     #ifdef MODXOM_DEBUG
