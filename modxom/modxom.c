@@ -26,10 +26,8 @@
 #define MMUEXT_UNMARK_XOM                       22
 #define MMUEXT_CREATE_XOM_SPAGES                23
 #define MMUEXT_WRITE_XOM_SPAGES                 24
-#define MMUEXT_GET_SECRET_PAGE                  25
 #define MMUEXT_MARK_REG_CLEAR                   26
 
-#define MODXOM_PROC_FILE_NAME                   "xom"
 #define READ_HEADER_STRING                      "        Address:             Size:\n"
 #define MAPPING_LINE_SIZE                       ((2 * (2 * sizeof(size_t) + 2)) + 5)
 
@@ -204,7 +202,7 @@ static int xmem_free(pmodxom_cmd cmd) {
 
     curr_entry = get_process_entry();
     if (!curr_entry)
-        return -EINVAL;
+        return -EBADF;
 
     curr_mapping = (pxom_mapping) curr_entry->mappings.next;
     while ((void *) curr_mapping != &(curr_entry->mappings)) {
@@ -239,7 +237,7 @@ static int lock_pages(pmodxom_cmd cmd) {
 
     curr_entry = get_process_entry();
     if (!curr_entry)
-        goto fail;
+        return -EBADF;
 
     curr_mapping = (pxom_mapping) curr_entry->mappings.next;
     while ((void *) curr_mapping != &(curr_entry->mappings)) {
@@ -273,7 +271,7 @@ static int xom_init_subpages(pmodxom_cmd cmd) {
 
     curr_entry = get_process_entry();
     if (!curr_entry)
-        return -EINVAL;
+        return -EBADF;
 
     curr_mapping = (pxom_mapping) curr_entry->mappings.next;
     while ((void *) curr_mapping != &(curr_entry->mappings)) {
@@ -401,7 +399,7 @@ static int xom_subpage_write_xen(pmodxom_cmd cmd) {
 
     curr_entry = get_process_entry();
     if (!curr_entry)
-        return -EINVAL;
+        return -EBADF;
 
     curr_mapping = (pxom_mapping) curr_entry->mappings.next;
     while ((void *) curr_mapping != &(curr_entry->mappings)) {
@@ -487,7 +485,7 @@ static int xom_forward_to_hypervisor(uint64_t base_addr, unsigned int mmuext_t_c
         return -EINVAL;
     curr_entry = get_process_entry();
     if (!curr_entry)
-        return -EINVAL;
+        return -EBADF;
 
     curr_mapping = (pxom_mapping) curr_entry->mappings.next;
     while ((void *) curr_mapping != &(curr_entry->mappings)) {
@@ -498,13 +496,6 @@ static int xom_forward_to_hypervisor(uint64_t base_addr, unsigned int mmuext_t_c
         }
 
         page_index = (base_addr - curr_mapping->uaddr) / PAGE_SIZE;
-
-        if (mmuext_t_cmd == MMUEXT_GET_SECRET_PAGE){
-            if (curr_mapping->subpage_level)
-                return -EINVAL;
-            if (is_page_locked(curr_mapping, page_index))
-                return -EINVAL;
-        }
 
         op.cmd = mmuext_t_cmd;
         op.arg1.mfn =
@@ -520,8 +511,6 @@ static int xom_forward_to_hypervisor(uint64_t base_addr, unsigned int mmuext_t_c
 #endif
             return -EINVAL;
         }
-        if (mmuext_t_cmd == MMUEXT_GET_SECRET_PAGE)
-            set_lock_status(curr_mapping, page_index, 1);
         return 0;
     }
     return -EINVAL;
@@ -533,7 +522,7 @@ static int xom_open(struct inode *__attribute__((unused)) _inode, struct file *_
     mutex_lock(&file_lock);
     if (get_process_entry()) {
         mutex_unlock(&file_lock);
-        return -EINVAL;
+        return -EEXIST;
     }
     new_entry = kmalloc(sizeof(*new_entry), GFP_KERNEL);
     new_entry->pid = current->pid;
@@ -551,7 +540,7 @@ static int xom_release(struct inode *, struct file *) {
     curr_entry = get_process_entry();
     if (!curr_entry) {
         mutex_unlock(&file_lock);
-        return -EINVAL;
+        return 0;
     }
     status = release_process(curr_entry);
     list_del(&(curr_entry->lhead));
@@ -562,7 +551,7 @@ static int xom_release(struct inode *, struct file *) {
 }
 
 static int xom_mmap(struct file *f, struct vm_area_struct *vma) {
-    int status = -EINVAL;
+    int status = -EBADF;
     pxom_process_entry curr_entry;
     pxom_mapping new_mapping;
 
@@ -603,7 +592,7 @@ exit:
 }
 
 static ssize_t xom_read(struct file *f, char __user *user_mem, size_t len, loff_t *offset) {
-    ssize_t status = -EINVAL;
+    ssize_t status = -EBADF;
     size_t len_reqired = sizeof(READ_HEADER_STRING), index, clen;
     char *dstring;
     pxom_process_entry curr_entry;

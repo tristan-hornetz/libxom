@@ -47,6 +47,7 @@ extern char **__environ;
 struct xombuf {
     void *address;
     size_t allocated_size;
+    pid_t pid;
     uint8_t locked;
     uint8_t marked;
     uint8_t xom_mode;
@@ -81,6 +82,7 @@ static pthread_mutex_t lib_lock;
 static unsigned int xom_mode = XOM_MODE_UNSUPPORTED;
 static void *xom_base_addr = NULL;
 static unsigned char migrate_dlopen = 0;
+static pid_t libxom_pid = 0;
 
 static void *(*dlopen_original)(const char *, int) = NULL;
 static void *(*dlmopen_original)(Lmid_t, const char *, int) = NULL;
@@ -146,8 +148,13 @@ static uint8_t is_pku_supported(void) {
     return (uint8_t) (c >> 3) & 1;
 }
 
-static inline void __libxom_prologue() {
+static void __libxom_prologue() {
     pthread_mutex_lock(&lib_lock);
+    if (xomfd >= 0 && libxom_pid != getpid()) {
+        close(xomfd);
+        xomfd = open(XOM_FILE, O_RDWR);
+        libxom_pid = getpid();
+    }
 }
 
 static inline void __libxom_epilogue() {
@@ -451,10 +458,16 @@ static p_xombuf xomalloc_page_internal(size_t size) {
         size_left -= ALLOC_CHUNK_SIZE;
     }
 
-    ret->allocated_size = size;
-    ret->locked = 0;
-    ret->marked = 0;
-    ret->xom_mode = (uint8_t) xom_mode;
+        
+    *ret = (_xombuf) {
+        .address = ret->address,
+        .allocated_size = size,
+        .pid = getpid(),
+        .locked = 0,
+        .marked = 0,
+        .xom_mode = (uint8_t) xom_mode
+    };
+
     return ret;
 
     fail:
@@ -500,6 +513,9 @@ static void *xom_lock_internal(struct xombuf *buf) {
         buf->locked = 1;
         return buf->address;
     }
+
+    if(buf->pid != libxom_pid)
+        return NULL;
 
     size_left = (ssize_t) buf->allocated_size;
     while (size_left > 0) {
@@ -715,6 +731,9 @@ static int mark_register_clear_internal(struct xombuf* buf, uint8_t full_clear, 
             .num_pages = full_clear ? REG_CLEAR_TYPE_FULL : REG_CLEAR_TYPE_VECTOR
     };
 
+    if(buf->pid != libxom_pid)
+        return -EINVAL;
+
     if(xom_mode != XOM_MODE_SLAT || !buf->locked || buf->marked)
         return -EINVAL;
 
@@ -844,7 +863,7 @@ void initialize_libxom(void) {
     pthread_mutexattr_settype(&full_reg_clear_lock_attr, PTHREAD_MUTEX_ERRORCHECK);
     pthread_mutex_init(&full_reg_clear_lock, &full_reg_clear_lock_attr);
 
-    xomfd = open("/proc/xom", O_RDWR);
+    xomfd = open(XOM_FILE, O_RDWR);
     if (xomfd >= 0) {
         xom_mode = XOM_MODE_SLAT;
     } else if (is_pku_supported()) {
@@ -871,6 +890,7 @@ void initialize_libxom(void) {
 #endif
 
     install_dlopen_hook();
+    libxom_pid = getpid();
 
     while (!rval)
         _rdrand32_step((uint32_t *) &rval);

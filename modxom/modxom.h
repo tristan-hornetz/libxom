@@ -25,6 +25,9 @@
 
 #define MAX_SUBPAGES_PER_CMD ((PAGE_SIZE - sizeof(uint8_t)) / (sizeof(xom_subpage_write_info)))
 
+#define MODXOM_PROC_FILE_NAME   "xom"
+#define XOM_FILE                ("/proc/" MODXOM_PROC_FILE_NAME)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
