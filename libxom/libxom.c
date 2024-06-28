@@ -54,8 +54,8 @@ struct xombuf {
 } typedef _xombuf, *p_xombuf;
 
 struct xom_subpages {
-    uint8_t xom_mode;
     void *address;
+    uint8_t xom_mode;
     uint32_t *lock_status;
     size_t num_subpages;
     int8_t references;
