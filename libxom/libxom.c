@@ -85,6 +85,7 @@ static unsigned char migrate_dlopen = 0;
 static pid_t libxom_pid = 0;
 
 static void *(*dlopen_original)(const char *, int) = NULL;
+
 static void *(*dlmopen_original)(Lmid_t, const char *, int) = NULL;
 
 #define wrap_call(T, F) {           \
@@ -122,17 +123,17 @@ int expect_full_reg_clear__(void) {
 
     lock_status = pthread_mutex_lock(&full_reg_clear_lock);
 
-    if(lock_status == EDEADLK){
-        if(xomfd >= 0){
+    if (lock_status == EDEADLK) {
+        if (xomfd >= 0) {
             signal(SIGSEGV, old_sig_handler);
             pthread_mutex_unlock(&full_reg_clear_lock);
         }
         return 0;
     }
-    if(lock_status)
+    if (lock_status)
         return 0;
 
-    if(xomfd >= 0){
+    if (xomfd >= 0) {
         old_sig_handler = signal(SIGSEGV, full_reg_clear_handler);
         setjmp(reg_clear_recovery_buffer);
     }
@@ -171,7 +172,7 @@ void *dlopen(const char *filename, int flags) {
     if (!dlopen_original)
         return NULL;
     ret = dlopen_original(filename, flags);
-    if(!migrate_dlopen)
+    if (!migrate_dlopen)
         return ret;
     if (ret)
         migrate_skip_type(TEXT_TYPE_VDSO);
@@ -184,7 +185,7 @@ void *dlmopen(Lmid_t lmid, const char *filename, int flags) {
     if (!dlmopen_original)
         return NULL;
     ret = dlmopen_original(lmid, filename, flags);
-    if(!migrate_dlopen)
+    if (!migrate_dlopen)
         return ret;
     if (ret)
         migrate_skip_type(TEXT_TYPE_VDSO);
@@ -458,14 +459,14 @@ static p_xombuf xomalloc_page_internal(size_t size) {
         size_left -= ALLOC_CHUNK_SIZE;
     }
 
-        
+
     *ret = (_xombuf) {
-        .address = ret->address,
-        .allocated_size = size,
-        .pid = getpid(),
-        .locked = 0,
-        .marked = 0,
-        .xom_mode = (uint8_t) xom_mode
+            .address = ret->address,
+            .allocated_size = size,
+            .pid = getpid(),
+            .locked = 0,
+            .marked = 0,
+            .xom_mode = (uint8_t) xom_mode
     };
 
     return ret;
@@ -481,7 +482,8 @@ static p_xombuf xomalloc_page_internal(size_t size) {
     return NULL;
 }
 
-static int xom_write_internal(struct xombuf *dest, const void *const restrict src, const size_t size, const size_t offset) {
+static int
+xom_write_internal(struct xombuf *dest, const void *const restrict src, const size_t size, const size_t offset) {
     if (!dest || !src || !size) {
         errno = EINVAL;
         return -1;
@@ -490,7 +492,7 @@ static int xom_write_internal(struct xombuf *dest, const void *const restrict sr
         errno = EINVAL;
         return -1;
     }
-    memcpy((void*)((uintptr_t) dest->address + offset), src, size);
+    memcpy((void *) ((uintptr_t) dest->address + offset), src, size);
     return (int) size;
 }
 
@@ -514,7 +516,7 @@ static void *xom_lock_internal(struct xombuf *buf) {
         return buf->address;
     }
 
-    if(buf->pid != libxom_pid)
+    if (buf->pid != libxom_pid)
         return NULL;
 
     size_left = (ssize_t) buf->allocated_size;
@@ -584,11 +586,11 @@ static struct xom_subpages *xom_alloc_subpages_internal(size_t size) {
     }
 
     *ret = (_xom_subpages) {
-        .xom_mode = xom_mode,
-        .address = xombuf->address,
-        .lock_status = calloc((SIZE_CEIL(size) >> PAGE_SHIFT), sizeof(uint32_t)),
-        .references = 0,
-        .num_subpages = (size / SUBPAGE_SIZE) + (size % SUBPAGE_SIZE ? 1 : 0)
+            .xom_mode = xom_mode,
+            .address = xombuf->address,
+            .lock_status = calloc((SIZE_CEIL(size) >> PAGE_SHIFT), sizeof(uint32_t)),
+            .references = 0,
+            .num_subpages = (size / SUBPAGE_SIZE) + (size % SUBPAGE_SIZE ? 1 : 0)
     };
 
     if (!ret->lock_status) {
@@ -607,26 +609,25 @@ static struct xom_subpages *xom_alloc_subpages_internal(size_t size) {
             free(ret);
             goto exit;
         }
-    }
-    else if (xom_mode == XOM_MODE_PKU) {
+    } else if (xom_mode == XOM_MODE_PKU) {
         if (subpage_pkey < 0)
             subpage_pkey = pkey_alloc(0, PKEY_DISABLE_ACCESS);
         pkey_mprotect(ret->address, xombuf->allocated_size, PROT_READ | PROT_WRITE | PROT_EXEC, subpage_pkey);
     }
 
-exit:
+    exit:
     free(xombuf);
     return ret;
 }
 
-static void *write_into_subpages(struct xom_subpages *dest, size_t subpages_required, const void * restrict src,
+static void *write_into_subpages(struct xom_subpages *dest, size_t subpages_required, const void *restrict src,
                                  unsigned int base_page, unsigned int base_subpage, uint32_t mask) {
     int status;
     unsigned int i;
     unsigned int pkru;
     xom_subpage_write *write_cmd;
 
-    if(dest->xom_mode == XOM_MODE_SLAT) {
+    if (dest->xom_mode == XOM_MODE_SLAT) {
         write_cmd = malloc(sizeof(*write_cmd));
 
         write_cmd->mxom_cmd = (modxom_cmd) {
@@ -656,22 +657,22 @@ static void *write_into_subpages(struct xom_subpages *dest, size_t subpages_requ
                 "rdpkru"
                 : "=a" (pkru)
                 : "c" (0), "d" (0)
-        );
+                );
         asm volatile(
                 "wrpkru"
-                :: "a" (pkru & ~(0x3 << (subpage_pkey << 1))), "c" (0), "d"(0)
-        );
+                ::"a" (pkru & ~(0x3 << (subpage_pkey << 1))), "c" (0), "d"(0)
+                );
 
-       memcpy(
-            (char*) dest->address + base_page * PAGE_SIZE + base_subpage * SUBPAGE_SIZE,
-            src,
-            subpages_required * SUBPAGE_SIZE
+        memcpy(
+                (char *) dest->address + base_page * PAGE_SIZE + base_subpage * SUBPAGE_SIZE,
+                src,
+                subpages_required * SUBPAGE_SIZE
         );
 
         asm volatile (
-            "wrpkru\n"
-            :: "a" (pkru), "c" (0), "d" (0)
-        );
+                "wrpkru\n"
+                ::"a" (pkru), "c" (0), "d" (0)
+                );
     } else
         return NULL;
 
@@ -681,7 +682,7 @@ static void *write_into_subpages(struct xom_subpages *dest, size_t subpages_requ
     return dest->address + base_page * PAGE_SIZE + base_subpage * SUBPAGE_SIZE;
 }
 
-static void *xom_fill_and_lock_subpages_internal(struct xom_subpages *dest, size_t size, const void * restrict src) {
+static void *xom_fill_and_lock_subpages_internal(struct xom_subpages *dest, size_t size, const void *restrict src) {
     size_t subpages_required = (size / SUBPAGE_SIZE) + (size % SUBPAGE_SIZE ? 1 : 0);
     uint32_t mask;
     unsigned int base_page, base_subpage;
@@ -743,16 +744,16 @@ static inline int get_xom_mode_internal() {
 }
 
 static int set_xom_mode_internal(const int new_xom_mode) {
-    if(new_xom_mode == xom_mode)
+    if (new_xom_mode == xom_mode)
         return 0;
     switch (new_xom_mode) {
         case XOM_MODE_SLAT:
-            if(xomfd <= 0)
+            if (xomfd <= 0)
                 return -1;
             xom_mode = XOM_MODE_SLAT;
             return 0;
         case XOM_MODE_PKU:
-            if(!is_pku_supported())
+            if (!is_pku_supported())
                 return -1;
             xom_mode = XOM_MODE_PKU;
             return 0;
@@ -761,20 +762,20 @@ static int set_xom_mode_internal(const int new_xom_mode) {
     return -1;
 }
 
-static int mark_register_clear_internal(struct xombuf* buf, uint8_t full_clear, size_t page_number) {
+static int mark_register_clear_internal(struct xombuf *buf, uint8_t full_clear, size_t page_number) {
     modxom_cmd cmd = {
             .cmd = MODXOM_CMD_MARK_REG_CLEAR,
             .base_addr = (uintptr_t) buf->address + (page_number * PAGE_SIZE),
             .num_pages = full_clear ? REG_CLEAR_TYPE_FULL : REG_CLEAR_TYPE_VECTOR
     };
 
-    if(buf->pid != libxom_pid)
+    if (buf->pid != libxom_pid)
         return -EINVAL;
 
-    if(xom_mode != XOM_MODE_SLAT || !buf->locked || buf->marked)
+    if (xom_mode != XOM_MODE_SLAT || !buf->locked || buf->marked)
         return -EINVAL;
 
-    if(write(xomfd, &cmd, sizeof(cmd)) < 0)
+    if (write(xomfd, &cmd, sizeof(cmd)) < 0)
         return -errno;
 
     buf->marked = 1;
@@ -808,7 +809,7 @@ void xom_free(struct xombuf *buf) {
 }
 
 int xom_mark_register_clear(struct xombuf *buf, uint8_t full_clear, size_t page_number) {
-    if(page_number * PAGE_SIZE > buf->allocated_size)
+    if (page_number * PAGE_SIZE > buf->allocated_size)
         return -EINVAL;
 
     wrap_call(int, mark_register_clear_internal(buf, full_clear, page_number));
