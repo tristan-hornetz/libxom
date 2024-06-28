@@ -720,6 +720,7 @@ static void xom_free_all_subpages_internal(struct xom_subpages *subpages) {
         };
         xom_free_internal(xbuf);
     }
+    free(subpages->lock_status);
     free(subpages);
 }
 
