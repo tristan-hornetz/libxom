@@ -1,4 +1,5 @@
 include_directories("..")
+include_directories("../modxom")
 
 add_library(xom SHARED
     "libxom.c"
