@@ -1,5 +1,12 @@
 # libxom
 
+---
+**NOTE**
+
+This repository has moved to [https://github.com/cispa/Lixom](https://github.com/cispa/Lixom).
+
+---
+
 libxom is a library for managing execute-only memory (XoM) on x86_64 Linux.
 It can create XoM mappings using Protection Keys or Extended Page Tables,
 depending on which is supported by hardware.
